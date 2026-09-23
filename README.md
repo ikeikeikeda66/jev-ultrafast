@@ -53,11 +53,12 @@ There are no site-specific action scripts or prepared field strings in the polic
 ## Try it
 
 ```bash
-git clone https://github.com/ikeikeikeda66/jev-ultrafast.git
+git clone https://github.com/browser-use/jev-ultrafast.git
 cd jev-ultrafast
 uv sync
 cp .env.example .env
 # SemIf resident server (http://127.0.0.1:8765) is used by default.
+# See docs/MULTI_CLIENT_SETUP.md or docs/WINDOWS_CLAUDE_CODE_GUIDE.md for SemIf server setup.
 # Add TEXT_MODEL_API_KEY (for TYPE_TEXT).
 uv run jev
 ```

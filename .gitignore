@@ -8,4 +8,4 @@ artifacts/
 *.egg-info/
 
 dist/
-tasks/
+/tasks/

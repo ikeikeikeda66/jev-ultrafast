@@ -85,7 +85,7 @@ uv sync
 ※ NVIDIA GPU (CUDA) をお持ちの場合は、必要に応じて CUDA 版の llama-cpp-python / PyTorch を指定できます。標準の CPU (Q4_K_M 量子化) でも 4B モデルは数秒で高速に動作します。
 
 ### ③ サーバーの起動
-Windows 用の起動バッチまたは PowerShell コマンドで起動します：
+手動で起動する場合は以下のコマンドを実行します：
 ```powershell
 # CPU で起動する場合
 uv run python scripts/semif_server.py --host 127.0.0.1 --port 8765 --device auto
@@ -94,12 +94,21 @@ uv run python scripts/semif_server.py --host 127.0.0.1 --port 8765 --device auto
 uv run python scripts/semif_server.py --host 127.0.0.1 --port 8765 --device cuda
 ```
 
+日常的に起動しやすくするため、作業フォルダー（例: `C:\AI\semlf`）内に `run_server.bat` を作成しておくことを推奨します：
+```bat
+@echo off
+cd /d C:\AI\semlf
+uv run python scripts/semif_server.py --host 127.0.0.1 --port 8765 --device auto
+pause
+```
+ダブルクリックするか、後述のタスクスケジューラからこのバッチファイルを呼び出すことで常駐できます。
+
 ### ④ ヘルスチェックの確認
 別の PowerShell ウィンドウを開き、正常に応答するか確認します：
 ```powershell
 curl.exe -s http://127.0.0.1:8765/health
 ```
-レスポンスで `"ready": true` が返ってくれば準備完了です。
+レスポンスで `{"status":"ok","ready":true}` が返ってくれば準備完了です。
 
 ---
 
@@ -125,15 +134,18 @@ copy .env.example .env
 ```
 `.env` の内容を確認・編集します：
 ```ini
-# SemIf サーバーのアドレス（デフォルトでローカル 8765）
+# SemIf resident server URL (defaults to http://127.0.0.1:8765)
 SEMIF_BASE_URL=http://127.0.0.1:8765
+# Optional bearer token if SemIf server requires authentication
+SEMIF_API_KEY=
 
-# TYPE_TEXT（入力テキスト生成）用の OpenAI 互換キー
-# 社内 Azure OpenAI や DeepSeek、OpenRouter などのキーを設定
+# Required for TYPE_TEXT. OpenAI-compatible helper; credentials stay server-side.
 TEXT_MODEL_API_KEY=your-api-key-here
-TEXT_MODEL_BASE_URL=https://api.deepseek.com/v1
-TEXT_MODEL=deepseek-chat
+TEXT_MODEL_BASE_URL=https://openrouter.ai/api/v1
+TEXT_MODEL=inception/mercury-2.5
+TEXT_MODEL_REASONING=none
 ```
+※ 社内環境などで DeepSeek や Azure OpenAI 等を利用する場合は、`TEXT_MODEL_BASE_URL` や `TEXT_MODEL` を適宜変更してください（例: `TEXT_MODEL_BASE_URL=https://api.deepseek.com/v1`, `TEXT_MODEL=deepseek-chat`）。
 
 ### ④ 疎通テストの実行
 ```powershell
@@ -226,4 +238,20 @@ Node.js や Python で `CERTIFICATE_VERIFY_FAILED` が発生する場合：
   ```
 
 ### ④ Windows サービス（常駐タスク）化について
-PC 起動時に SemIf サーバーを自動起動したい場合は、Windows の **タスクスケジューラ** を利用して「ログオン時に `run_server.bat` をバックグラウンド実行」するように設定すると便利です。
+PC 起動時に SemIf サーバーを自動起動したい場合は、セクション 2 で作成した `run_server.bat` を Windows の **タスクスケジューラ** に登録します：
+
+**PowerShell で登録する場合（管理者として実行）**:
+```powershell
+$action = New-ScheduledTaskAction -Execute "C:\AI\semlf\run_server.bat"
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+Register-ScheduledTask -TaskName "SemIfResidentServer" -Action $action -Trigger $trigger -Description "Start SemIf resident server automatically at logon"
+```
+
+**GUI（タスクスケジューラ）で設定する場合**:
+1. `Win + R` を押し、`taskschd.msc` を実行。
+2. 右ペインの「基本タスクの作成」をクリック。
+3. タスク名に「`SemIf Server`」を入力し、「ログオン時」をトリガーに選択。
+4. 操作で「プログラムの開始」を選択し、プログラム/スクリプトに `C:\AI\semlf\run_server.bat` を指定。
+5. 「完了」をクリックして登録を完了します。
+これで PC 再起動後も自動的に SemIf サーバーが待機状態になります。
+

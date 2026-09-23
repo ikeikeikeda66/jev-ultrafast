@@ -103,21 +103,37 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
     elapsed_total_ms = 0
 
     try:
+        max_steps = int(max_steps)
+    except (TypeError, ValueError):
+        max_steps = 10
+
+    if max_steps <= 0:
+        return {
+            "status": "stopped",
+            "verified": False,
+            "goal": goal,
+            "total_steps": 0,
+            "elapsed_ms": 0,
+            "final_page": {},
+            "history": [],
+            "note": "Stopped before starting because max_steps is 0 or negative.",
+        }
+
+    try:
         with Agent(url, goal) as agent:
-            step_count = 0
             for snapshot in agent.run():
-                step_count += 1
                 history = snapshot.get("history", [])
-                latest = history[-1] if history else {}
-                step_records.append({
-                    "step": len(step_records) + 1,
-                    "action": latest.get("action"),
-                    "operation": latest.get("operation"),
-                    "choice": latest.get("choice"),
-                    "text": latest.get("text"),
-                    "confidence": latest.get("confidence"),
-                    "elapsed_ms": snapshot.get("elapsed_ms"),
-                })
+                while len(step_records) < len(history):
+                    entry = history[len(step_records)]
+                    step_records.append({
+                        "step": entry.get("step", len(step_records) + 1),
+                        "action": entry.get("action"),
+                        "operation": entry.get("operation"),
+                        "choice": entry.get("choice"),
+                        "text": entry.get("text"),
+                        "confidence": entry.get("confidence"),
+                        "elapsed_ms": entry.get("elapsed_ms", snapshot.get("elapsed_ms")),
+                    })
                 final_status = snapshot.get("status")
                 final_page = {
                     "url": snapshot.get("page", {}).get("url"),
@@ -126,12 +142,18 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
                 }
                 elapsed_total_ms = snapshot.get("elapsed_ms", 0)
 
-                if step_count >= max_steps:
+                if len(step_records) >= max_steps:
                     logger.info("Reached maximum step limit: %d", max_steps)
                     break
 
         return {
             "status": final_status,
+            "verified": False,
+            "outcome_verification": (
+                "unverified - DONE choice by model without independent contract assertion"
+                if final_status == "done"
+                else "not_applicable"
+            ),
             "goal": goal,
             "total_steps": len(step_records),
             "elapsed_ms": elapsed_total_ms,
@@ -142,9 +164,10 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
         logger.exception("Error executing browse")
         return {
             "status": "error",
+            "verified": False,
             "error": str(e),
             "goal": goal,
-            "steps_completed": len(step_records),
+            "total_steps": len(step_records),
             "history": step_records,
         }
 
@@ -194,7 +217,12 @@ def handle_request(req: dict) -> dict | None:
         if tool_name == "jev_browse":
             url = arguments.get("url")
             goal = arguments.get("goal")
-            max_steps = arguments.get("max_steps", 10)
+            raw_max = arguments.get("max_steps")
+            try:
+                max_steps = int(raw_max) if raw_max is not None else 10
+            except (TypeError, ValueError):
+                max_steps = 10
+
             if not url or not goal:
                 return {
                     "jsonrpc": "2.0",
@@ -205,10 +233,12 @@ def handle_request(req: dict) -> dict | None:
                     },
                 }
             res = execute_browse(url, goal, max_steps)
+            is_error = res.get("status") == "error"
             return {
                 "jsonrpc": "2.0",
                 "id": req_id,
                 "result": {
+                    "isError": is_error,
                     "content": [{"type": "text", "text": json.dumps(res, ensure_ascii=False, indent=2)}],
                 },
             }
@@ -270,12 +300,31 @@ def main():
             continue
         try:
             req = json.loads(line)
+        except Exception as e:
+            err_resp = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": f"Parse error: {e}"},
+            }
+            sys.stdout.write(json.dumps(err_resp) + "\n")
+            sys.stdout.flush()
+            continue
+
+        try:
             resp = handle_request(req)
             if resp is not None:
                 sys.stdout.write(json.dumps(resp) + "\n")
                 sys.stdout.flush()
         except Exception as e:
             logger.exception("Error processing MCP message: %s", e)
+            if isinstance(req, dict) and req.get("id") is not None:
+                err_resp = {
+                    "jsonrpc": "2.0",
+                    "id": req.get("id"),
+                    "error": {"code": -32603, "message": f"Internal error: {e}"},
+                }
+                sys.stdout.write(json.dumps(err_resp) + "\n")
+                sys.stdout.flush()
 
 
 if __name__ == "__main__":

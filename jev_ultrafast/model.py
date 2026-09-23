@@ -43,6 +43,8 @@ def post_decide(state, question, options):
 
 def validate_choice(answer, ids):
     """Validates a SemIf decide or legacy choice response against expected option IDs."""
+    if not isinstance(answer, dict):
+        raise ValueError("Invalid SemIf response; no action executed.")
     try:
         choice = answer.get("decision") or answer.get("choice")
         answer["choice"] = choice
@@ -138,9 +140,7 @@ def choose(state, goal, history):
                 "confidence": 1.0,
                 "probabilities": {target: 1.0},
             }
-        else:
-            # SemIf supports 2-16 options per decision
-            bounded_keys = candidate_keys[:16]
+        elif len(candidates) <= 16:
             target_options = [
                 {
                     "id": index,
@@ -149,7 +149,7 @@ def choose(state, goal, history):
                         + (f" value={candidates[index].get('value')}" if candidates[index].get("value") else "")
                     ),
                 }
-                for index in bounded_keys
+                for index in candidate_keys
             ]
             target_state = {
                 "page": {k: state[k] for k in ("url", "title", "text")},
@@ -165,7 +165,7 @@ def choose(state, goal, history):
                             if k in candidates[index]
                         },
                     }
-                    for index in bounded_keys
+                    for index in candidate_keys
                 ],
             }
             target_question = (
@@ -173,11 +173,79 @@ def choose(state, goal, history):
                 f"Which candidate element is the target for operation {operation}?"
             )
             target_raw = post_decide(target_state, target_question, target_options)
-            target_answer = validate_choice(target_raw, set(bounded_keys))
+            target_answer = validate_choice(target_raw, set(candidate_keys))
             target = target_answer["choice"]
+        else:
+            # Paged exploration for more than 16 candidates
+            offset = 0
+            target = None
+            target_answer = None
+            while offset < len(candidate_keys):
+                chunk = candidate_keys[offset : offset + 15]
+                has_more = (offset + 15) < len(candidate_keys)
+                current_options = [
+                    {
+                        "id": index,
+                        "description": (
+                            f"[{index}] {candidates[index]['label']}"
+                            + (f" value={candidates[index].get('value')}" if candidates[index].get("value") else "")
+                        ),
+                    }
+                    for index in chunk
+                ]
+                if has_more:
+                    rem = len(candidate_keys) - offset - 15
+                    current_options.append({
+                        "id": "MORE_CANDIDATES",
+                        "description": f"None of these. Show next candidate elements (remaining: {rem}).",
+                    })
+
+                target_state = {
+                    "page": {k: state[k] for k in ("url", "title", "text")},
+                    "operation": operation,
+                    "total_candidates": len(candidate_keys),
+                    "showing_range": f"{offset + 1} to {offset + len(chunk)}",
+                    "candidate_elements": [
+                        {
+                            "index": index,
+                            "label": candidates[index]["label"],
+                            "current_value": candidates[index].get("current_value", candidates[index].get("value", "")),
+                            **{
+                                k: candidates[index][k]
+                                for k in ("role", "checked", "selected", "expanded")
+                                if k in candidates[index]
+                            },
+                        }
+                        for index in chunk
+                    ],
+                }
+                target_question = (
+                    f"Goal: {goal}\nOperation: {operation}\nRules: {NEXT_ACTION}\n{TARGET}\n"
+                    f"Which candidate element is the target for operation {operation}?"
+                )
+                expected_ids = {opt["id"] for opt in current_options}
+                target_raw = post_decide(target_state, target_question, current_options)
+                target_answer = validate_choice(target_raw, expected_ids)
+                selected_choice = target_answer["choice"]
+                if selected_choice == "MORE_CANDIDATES" and has_more:
+                    offset += 15
+                    continue
+                target = selected_choice
+                break
+
+            if target is None or target not in candidates:
+                target = candidate_keys[0]
 
         choice = candidates[target]["id"]
-        probabilities = {a["id"]: target_answer["probabilities"].get(index, 0.0) for index, a in candidates.items()}
+        # Normalize probabilities over all candidates so sum equals 1.0
+        matching_prob = target_answer["probabilities"].get(target, 1.0)
+        remaining_prob = max(0.0, 1.0 - matching_prob)
+        other_count = max(1, len(candidates) - 1)
+        each_other = remaining_prob / other_count
+        probabilities = {
+            a["id"]: (matching_prob if index == target else each_other)
+            for index, a in candidates.items()
+        }
     else:
         choice = controls[operation]["id"] if operation in controls else operation
         probabilities = {choice: operation_answer["probabilities"][operation]}

@@ -16,15 +16,15 @@ Model Context Protocol (MCP) を介して、主要な AI エージェント環�
 
 ## 2. 各クライアントへの設定状況
 
-### ① Claude Desktop（クロウ）
-設定ファイル `~/Library/Application Support/Claude/claude_desktop_config.json` に登録済みです：
+### ① Claude Desktop
+設定ファイル（macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`、Windows: `%APPDATA%\Claude\claude_desktop_config.json`）の登録例：
 ```json
 {
   "mcpServers": {
     "jev-ultrafast": {
-      "command": "/Volumes/SSD_USB_1/AntiGravitiRoot/jev-ultrafast/.venv/bin/python",
+      "command": "<path-to-jev-ultrafast>/.venv/bin/python",
       "args": [
-        "/Volumes/SSD_USB_1/AntiGravitiRoot/jev-ultrafast/scripts/jev_mcp.py"
+        "<path-to-jev-ultrafast>/scripts/jev_mcp.py"
       ]
     }
   }
@@ -38,24 +38,24 @@ Model Context Protocol (MCP) を介して、主要な AI エージェント環�
 ### ② Claude Code
 プロジェクト直下の `.mcp.json` または CLI コマンドで追加できます：
 ```bash
-claude mcp add jev-ultrafast /Volumes/SSD_USB_1/AntiGravitiRoot/jev-ultrafast/.venv/bin/python /Volumes/SSD_USB_1/AntiGravitiRoot/jev-ultrafast/scripts/jev_mcp.py
+claude mcp add jev-ultrafast <path-to-jev-ultrafast>/.venv/bin/python <path-to-jev-ultrafast>/scripts/jev_mcp.py
 ```
 
 ---
 
 ### ③ Codex CLI
-グローバル MCP サーバーとして登録済みです（`codex mcp list` で確認可能）：
+グローバル MCP サーバーとして登録する例（`codex mcp list` で確認可能）：
 ```bash
-# 登録コマンド（実行済み）
-codex mcp add jev-ultrafast -- /Volumes/SSD_USB_1/AntiGravitiRoot/jev-ultrafast/.venv/bin/python /Volumes/SSD_USB_1/AntiGravitiRoot/jev-ultrafast/scripts/jev_mcp.py
+# 登録コマンド
+codex mcp add jev-ultrafast -- <path-to-jev-ultrafast>/.venv/bin/python <path-to-jev-ultrafast>/scripts/jev_mcp.py
 ```
 **利用方法**: `codex` コマンドでタスクを実行する際、Codex が必要に応じて自動的に `jev_browse` ツールを呼び出します。
 
 ---
 
 ### ④ Antigravity (Google DeepMind Antigravity IDE / CLI)
-- **MCP 設定**: `~/.gemini/config/mcp_config.json` に `jev-ultrafast` として登録済みです。
-- **エージェントスキル**: `~/.gemini/config/skills/jev-ultrafast/SKILL.md` にスキル定義を配備済みです。
+- **MCP 設定**: `~/.gemini/config/mcp_config.json` に `jev-ultrafast` サーバー設定を追加して利用します。
+- **エージェントスキル**: `~/.gemini/config/skills/jev-ultrafast/SKILL.md` にスキル定義を配備して利用します。
 Antigravity はブラウザ自動化タスクや航空券・Web フォーム操作のリクエストを受けた際、このスキルおよび MCP ツールを自律的に認識して活用します。
 
 ---
