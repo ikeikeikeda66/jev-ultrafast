@@ -60,7 +60,7 @@ def test_invalid_choice_is_rejected(mutation):
         a["choice"] = "b"
     else:
         a["confidence"] = 5
-    with pytest.raises(ValueError, match="Invalid TypeSafe"):
+    with pytest.raises(ValueError, match="Invalid SemIf"):
         model.validate_choice(a, {"a", "b"})
 
 
@@ -74,42 +74,79 @@ def test_one_index_per_node_with_operation_specific_targets():
     assert "WAIT" in controls
 
 
-def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
+def test_semif_two_stage_decision_and_single_candidate_bypass(monkeypatch):
     calls = []
 
     def post(_url, _key, body):
         calls.append(body)
+        options = [opt["id"] for opt in body["options"]]
         return {
-            "model": "test",
-            "answers": {
-                "operation": choice(body["questions"]["operation"]["criteria"], "TYPE_TEXT"),
-                "type_text_target": choice(["1"], "1"),
-                "click_target": {"choice": "invented"},
-            },
+            "model": "semif-test",
+            "decision": "TYPE_TEXT",
+            "confidence": 0.99,
+            "probabilities": {opt: (0.99 if opt == "TYPE_TEXT" else 0.01 / (len(options) - 1)) for opt in options},
         }
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
     monkeypatch.setattr(model, "post_json", post)
     d = model.choose(page(), "Find a book", [])
+    # Since TYPE_TEXT has only 1 target ("1"), it bypasses second model call
     assert len(calls) == 1
     assert d["operation"] == "TYPE_TEXT" and d["target"] == "1" and d["choice"] == "e1"
-    assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
+    assert d["confidence"] == 0.99
 
 
-def test_click_cannot_consume_a_text_target(monkeypatch):
+def test_semif_two_stage_decision_calls_second_stage_for_multiple_targets(monkeypatch):
+    calls = []
+
     def post(_url, _key, body):
+        calls.append(body)
+        options = [opt["id"] for opt in body["options"]]
+        if len(calls) == 1:
+            # Operation decision
+            return {
+                "model": "semif-test",
+                "decision": "CLICK",
+                "confidence": 0.95,
+                "probabilities": {opt: (0.95 if opt == "CLICK" else 0.05 / (len(options) - 1)) for opt in options},
+            }
+        else:
+            # Target decision (options: ["1", "2"])
+            return {
+                "model": "semif-test",
+                "decision": "2",
+                "confidence": 0.92,
+                "probabilities": {"1": 0.08, "2": 0.92},
+            }
+
+    monkeypatch.setattr(model, "post_json", post)
+    d = model.choose(page(), "Find a book", [])
+    assert len(calls) == 2
+    assert d["operation"] == "CLICK" and d["target"] == "2" and d["choice"] == "e3"
+    assert d["choice"] == "e3"
+
+
+def test_click_rejects_invalid_target_decision(monkeypatch):
+    calls = []
+
+    def post(_url, _key, body):
+        calls.append(body)
+        if len(calls) == 1:
+            options = [opt["id"] for opt in body["options"]]
+            return {
+                "model": "semif-test",
+                "decision": "CLICK",
+                "confidence": 1.0,
+                "probabilities": {opt: float(opt == "CLICK") for opt in options},
+            }
         return {
-            "model": "test",
-            "answers": {
-                "operation": choice(body["questions"]["operation"]["criteria"], "CLICK"),
-                "type_text_target": choice(["1"], "1"),
-                "click_target": choice(["1", "2", "999"], "999"),
-            },
+            "model": "semif-test",
+            "decision": "999",
+            "confidence": 1.0,
+            "probabilities": {"1": 0.0, "2": 0.0, "999": 1.0},
         }
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
     monkeypatch.setattr(model, "post_json", post)
-    with pytest.raises(ValueError, match="Invalid TypeSafe"):
+    with pytest.raises(ValueError, match="Invalid SemIf"):
         model.choose(page(), "Find a book", [])
 
 
@@ -119,22 +156,31 @@ def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch
         "id": "toggle", "kind": "click", "label": "Free cancellation", "node": 30,
         "role": "checkbox", "checked": "true", "selected": False,
     })
+    calls = []
 
     def post(_url, _key, body):
-        questions = body["questions"]
-        target = questions["click_target"]
-        assert target["criteria"]["1"]["checked"] == "true"
-        assert target["criteria"]["1"]["selected"] is False
-        assert questions["operation"]["instructions"]["rules"] in target["instructions"]["rules"]
+        calls.append(body)
+        if len(calls) == 1:
+            options = [opt["id"] for opt in body["options"]]
+            return {
+                "model": "semif-test",
+                "decision": "CLICK",
+                "confidence": 1.0,
+                "probabilities": {opt: float(opt == "CLICK") for opt in options},
+            }
+        # Check target request body
+        target_state = body["state"]
+        first_elem = target_state["candidate_elements"][0]
+        assert first_elem["checked"] == "true"
+        assert first_elem["selected"] is False
+        assert "Rules:" in body["question"]
         return {
-            "model": "test",
-            "answers": {
-                "operation": choice(questions["operation"]["criteria"], "CLICK"),
-                "click_target": choice(target["criteria"], "3"),
-            },
+            "model": "semif-test",
+            "decision": "3",
+            "confidence": 1.0,
+            "probabilities": {"1": 0.0, "2": 0.0, "3": 1.0},
         }
 
-    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
     monkeypatch.setattr(model, "post_json", post)
     d = model.choose(p, "Search with free cancellation", [])
     assert d["choice"] == "e3"
