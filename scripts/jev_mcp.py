@@ -121,9 +121,14 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
 
     try:
         with Agent(url, goal) as agent:
+            iteration_count = 0
+            max_iterations = max(max_steps * 2, 10)
             for snapshot in agent.run():
+                iteration_count += 1
                 history = snapshot.get("history", [])
                 while len(step_records) < len(history):
+                    if len(step_records) >= max_steps:
+                        break
                     entry = history[len(step_records)]
                     step_records.append({
                         "step": entry.get("step", len(step_records) + 1),
@@ -142,8 +147,15 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
                 }
                 elapsed_total_ms = snapshot.get("elapsed_ms", 0)
 
-                if len(step_records) >= max_steps:
-                    logger.info("Reached maximum step limit: %d", max_steps)
+                if len(step_records) >= max_steps or iteration_count >= max_iterations:
+                    logger.info(
+                        "Reached maximum step or iteration limit (steps=%d, iterations=%d, max_steps=%d)",
+                        len(step_records),
+                        iteration_count,
+                        max_steps,
+                    )
+                    if final_status not in {"done", "blocked"}:
+                        final_status = "stopped"
                     break
 
         return {

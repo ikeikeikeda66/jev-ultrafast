@@ -17,7 +17,9 @@ Model Context Protocol (MCP) を介して、主要な AI エージェント環�
 ## 2. 各クライアントへの設定状況
 
 ### ① Claude Desktop
-設定ファイル（macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`、Windows: `%APPDATA%\Claude\claude_desktop_config.json`）の登録例：
+設定ファイルの登録例：
+
+- **macOS** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -30,6 +32,22 @@ Model Context Protocol (MCP) を介して、主要な AI エージェント環�
   }
 }
 ```
+
+- **Windows** (`%APPDATA%\Claude\claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "jev-ultrafast": {
+      "command": "C:\\AI\\jev-ultrafast\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\AI\\jev-ultrafast\\scripts\\jev_mcp.py"
+      ]
+    }
+  }
+}
+```
+※ Windows の場合は Python 実行ファイルが `.venv\Scripts\python.exe` となり、JSON 内のパスは `\\` でエスケープしてください。詳細は [WINDOWS_CLAUDE_CODE_GUIDE.md](WINDOWS_CLAUDE_CODE_GUIDE.md) も参照してください。
+
 **利用方法**: Claude Desktop を再起動すると、チャット内で `jev_browse` ツールが有効になります。
 > 例: 「Google Flights（https://www.google.com/travel/flights?hl=en）でロンドンからチューリッヒへの9月20日の片道航空券を検索して」
 

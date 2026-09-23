@@ -176,13 +176,16 @@ def choose(state, goal, history):
             target_answer = validate_choice(target_raw, set(candidate_keys))
             target = target_answer["choice"]
         else:
-            # Paged exploration for more than 16 candidates
+            # Paged exploration for more than 16 candidates, capped at MAX_TARGET_PAGES to respect budget
+            MAX_TARGET_PAGES = 3
             offset = 0
+            page_count = 0
             target = None
             target_answer = None
-            while offset < len(candidate_keys):
+            while offset < len(candidate_keys) and page_count < MAX_TARGET_PAGES:
+                page_count += 1
                 chunk = candidate_keys[offset : offset + 15]
-                has_more = (offset + 15) < len(candidate_keys)
+                has_more = (offset + 15) < len(candidate_keys) and page_count < MAX_TARGET_PAGES
                 current_options = [
                     {
                         "id": index,
@@ -230,20 +233,16 @@ def choose(state, goal, history):
                 if selected_choice == "MORE_CANDIDATES" and has_more:
                     offset += 15
                     continue
-                target = selected_choice
+                target = selected_choice if selected_choice != "MORE_CANDIDATES" else chunk[0]
                 break
 
             if target is None or target not in candidates:
                 target = candidate_keys[0]
 
         choice = candidates[target]["id"]
-        # Normalize probabilities over all candidates so sum equals 1.0
-        matching_prob = target_answer["probabilities"].get(target, 1.0)
-        remaining_prob = max(0.0, 1.0 - matching_prob)
-        other_count = max(1, len(candidates) - 1)
-        each_other = remaining_prob / other_count
+        # Preserve reported per-candidate probabilities; pad unobserved candidates with 0.0
         probabilities = {
-            a["id"]: (matching_prob if index == target else each_other)
+            a["id"]: target_answer["probabilities"].get(index, 0.0)
             for index, a in candidates.items()
         }
     else:

@@ -99,9 +99,8 @@ uv run python scripts/semif_server.py --host 127.0.0.1 --port 8765 --device cuda
 @echo off
 cd /d C:\AI\semlf
 uv run python scripts/semif_server.py --host 127.0.0.1 --port 8765 --device auto
-pause
 ```
-ダブルクリックするか、後述のタスクスケジューラからこのバッチファイルを呼び出すことで常駐できます。
+ダブルクリックで手動起動できるほか、後述のタスクスケジューラからバックグラウンド常駐用としてそのまま登録できます（手動実行時にログ確認のためプロンプトを保持したい場合は末尾に `pause` を追加できますが、タスクスケジューラ用にはキー入力待ちを防ぐため `pause` を除外してください）。
 
 ### ④ ヘルスチェックの確認
 別の PowerShell ウィンドウを開き、正常に応答するか確認します：
@@ -238,14 +237,15 @@ Node.js や Python で `CERTIFICATE_VERIFY_FAILED` が発生する場合：
   ```
 
 ### ④ Windows サービス（常駐タスク）化について
-PC 起動時に SemIf サーバーを自動起動したい場合は、セクション 2 で作成した `run_server.bat` を Windows の **タスクスケジューラ** に登録します：
+PC 起動時に SemIf サーバーを自動起動したい場合は、セクション 2 で作成した `run_server.bat`（`pause` のないもの）を Windows の **タスクスケジューラ** に登録します：
 
-**PowerShell で登録する場合（管理者として実行）**:
+**PowerShell で登録する場合（通常ユーザー権限で実行）**:
 ```powershell
 $action = New-ScheduledTaskAction -Execute "C:\AI\semlf\run_server.bat"
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 Register-ScheduledTask -TaskName "SemIfResidentServer" -Action $action -Trigger $trigger -Description "Start SemIf resident server automatically at logon"
 ```
+※ 企業の一般ユーザー環境では、管理者権限ではなく**通常ユーザーの PowerShell** で実行してください（管理者権限で実行するとタスクが管理者アカウントに紐づけられ、一般ユーザーのログオン時にトリガーされなくなります）。
 
 **GUI（タスクスケジューラ）で設定する場合**:
 1. `Win + R` を押し、`taskschd.msc` を実行。
