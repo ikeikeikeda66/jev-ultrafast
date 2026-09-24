@@ -22,3 +22,8 @@
 ## 5. Repository & Documentation Hygiene
 - **Root-Anchor Ignore Rules**: Anchor directory ignore rules (e.g. `/tasks/`) to prevent unintended exclusion of nested packages.
 - **Placeholder Paths**: Avoid committing personal environment paths or personal fork URLs in public documentation.
+
+## 6. Decision Provenance & Calibration Boundaries
+- **Explicit Provenance Boundaries**: SemIf and Jev must not be conflated merely because they share an action schema. Explicitly report actual `backend` (`semif`), `model`/version, `question_spec_hash`, and separate decision provenance from browser execution traces.
+- **Deterministic Bypass Tagging**: When bypassing model evaluation for a single candidate element, explicitly return `decision_source="deterministic"`. Use `decision_source="model"` for model evaluations.
+- **Neutral Tool Names & Qualified Results**: Provide neutral tool names (`open_browse`, `open_decide`) and backend-qualified results (`backend: "semif"`, `calibration_surface: "semif_local"`) to prevent local and cloud traces from conflating distinct calibration surfaces.

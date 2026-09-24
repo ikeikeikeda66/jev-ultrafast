@@ -198,12 +198,12 @@ claude
 Claude Code の対話プロンプトで、ブラウザ操作タスクを依頼します：
 
 > **指示例 1 (航空券検索)**:
-> 「`jev_browse` ツールを使って、Google Flights (https://www.google.com/travel/flights?hl=en) で東京（羽田/成田）から福岡への片道航空券を検索して、最安フライト候補を教えて。」
+> 「`open_browse`（または `jev_browse`）ツールを使って、Google Flights (https://www.google.com/travel/flights?hl=en) で東京（羽田/成田）から福岡への片道航空券を検索して、最安フライト候補を教えて。」
 
 > **指示例 2 (社内ポータルやWeb調査)**:
-> 「`jev_browse` ツールで https://example.com を開き、ログインフォームに移動して状態を調べて。」
+> 「`open_browse` ツールで https://example.com を開き、ログインフォームに移動して状態を調べて。」
 
-Claude Code は自動的に `jev_browse` ツールを起動し、SemIf によるミリ秒単位の判断でフォーム入力やクリックを実行し、結果をまとめて返答します。
+Claude Code は自動的に `open_browse`（または `jev_browse`）ツールを起動し、SemIf によるミリ秒単位の判断でフォーム入力やクリックを実行し、結果をまとめて返答します。
 
 ---
 

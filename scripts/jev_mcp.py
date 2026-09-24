@@ -37,7 +37,7 @@ logger = logging.getLogger("jev-mcp")
 
 TOOLS = [
     {
-        "name": "jev_browse",
+        "name": "open_browse",
         "description": (
             "Autonomously navigate and interact with web pages to achieve a specific goal using "
             "ultra-low latency semantic decisions powered by the local SemIf model. "
@@ -65,11 +65,58 @@ TOOLS = [
         },
     },
     {
-        "name": "jev_decide",
+        "name": "open_decide",
         "description": (
             "Evaluate a page state (observed elements, text, and history) against a goal, "
             "and instantaneously predict the optimal browser action and target element using SemIf."
         ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "object",
+                    "description": "Observed page state containing url, title, text, and indexed actions.",
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "Goal or instruction to achieve.",
+                },
+                "history": {
+                    "type": "array",
+                    "description": "Recent actions executed so far.",
+                    "items": {"type": "object"},
+                    "default": [],
+                },
+            },
+            "required": ["page", "goal"],
+        },
+    },
+    {
+        "name": "jev_browse",
+        "description": "Alias for open_browse (for backwards compatibility).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Initial target URL to navigate to.",
+                },
+                "goal": {
+                    "type": "string",
+                    "description": "Natural language task or objective to accomplish on the page.",
+                },
+                "max_steps": {
+                    "type": "integer",
+                    "description": "Maximum number of browser action steps to execute before stopping (default: 10).",
+                    "default": 10,
+                },
+            },
+            "required": ["url", "goal"],
+        },
+    },
+    {
+        "name": "jev_decide",
+        "description": "Alias for open_decide (for backwards compatibility).",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -138,6 +185,11 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
                         "text": entry.get("text"),
                         "confidence": entry.get("confidence"),
                         "elapsed_ms": entry.get("elapsed_ms", snapshot.get("elapsed_ms")),
+                        "backend": entry.get("backend", "semif"),
+                        "model": entry.get("model"),
+                        "question_spec_hash": entry.get("question_spec_hash"),
+                        "decision_source": entry.get("decision_source"),
+                        "provenance": entry.get("provenance"),
                     })
                 final_status = snapshot.get("status")
                 final_page = {
@@ -161,6 +213,12 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
         return {
             "status": final_status,
             "verified": False,
+            "backend": "semif",
+            "calibration_surface": "semif_local",
+            "provenance": {
+                "backend": "semif",
+                "calibration_surface": "semif_local",
+            },
             "outcome_verification": (
                 "unverified - DONE choice by model without independent contract assertion"
                 if final_status == "done"
@@ -177,6 +235,12 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
         return {
             "status": "error",
             "verified": False,
+            "backend": "semif",
+            "calibration_surface": "semif_local",
+            "provenance": {
+                "backend": "semif",
+                "calibration_surface": "semif_local",
+            },
             "error": str(e),
             "goal": goal,
             "total_steps": len(step_records),
@@ -186,7 +250,10 @@ def execute_browse(url: str, goal: str, max_steps: int = 10) -> dict:
 
 def execute_decide(page: dict, goal: str, history: list | None = None) -> dict:
     """Decide next action using SemIf without browser execution."""
-    return model.choose(page, goal, history or [])
+    res = model.choose(page, goal, history or [])
+    res.setdefault("backend", "semif")
+    res.setdefault("calibration_surface", "semif_local")
+    return res
 
 
 def handle_request(req: dict) -> dict | None:
@@ -226,7 +293,7 @@ def handle_request(req: dict) -> dict | None:
         tool_name = params.get("name")
         arguments = params.get("arguments", {})
 
-        if tool_name == "jev_browse":
+        if tool_name in {"open_browse", "jev_browse"}:
             url = arguments.get("url")
             goal = arguments.get("goal")
             raw_max = arguments.get("max_steps")
@@ -255,7 +322,7 @@ def handle_request(req: dict) -> dict | None:
                 },
             }
 
-        elif tool_name == "jev_decide":
+        elif tool_name in {"open_decide", "jev_decide"}:
             page = arguments.get("page")
             goal = arguments.get("goal")
             history = arguments.get("history", [])

@@ -9,8 +9,11 @@ Model Context Protocol (MCP) を介して、主要な AI エージェント環�
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
-| `jev_browse` | 指定した URL をブラウザで開き、自然言語のゴールを自律的に達成するまで操作を実行 | `url` (必須), `goal` (必須), `max_steps` (任意, デフォルト 10) |
-| `jev_decide` | 観測したページ状態とゴールから、SemIf を用いて次に実行すべきアクション（クリック/入力等）を判定 | `page` (必須), `goal` (必須), `history` (任意) |
+| `open_browse` (エイリアス: `jev_browse`) | 指定した URL をブラウザで開き、自然言語のゴールを自律的に達成するまで操作を実行 | `url` (必須), `goal` (必須), `max_steps` (任意, デフォルト 10) |
+| `open_decide` (エイリアス: `jev_decide`) | 観測したページ状態とゴールから、SemIf を用いて次に実行すべきアクション（クリック/入力等）を判定 | `page` (必須), `goal` (必須), `history` (任意) |
+
+> **意思決定来歴（Decision Provenance）の分離**:
+> レスポンス結果には、ブラウザ実行結果（`action`, `elapsed_ms`, `final_page`）とは明確に分離された意思決定来歴（`backend: "semif"`, `calibration_surface: "semif_local"`, `model`, `question_spec_hash`, `decision_source`）が含まれます。単一候補要素の自動バイパス時は `decision_source="deterministic"`、推論時は `decision_source="model"` として記録され、Jev クラウドモデルと SemIf ローカルモデルのキャリブレーション特性の混同を防ぎます。
 
 ---
 
@@ -48,7 +51,7 @@ Model Context Protocol (MCP) を介して、主要な AI エージェント環�
 ```
 ※ Windows の場合は Python 実行ファイルが `.venv\Scripts\python.exe` となり、JSON 内のパスは `\\` でエスケープしてください。詳細は [WINDOWS_CLAUDE_CODE_GUIDE.md](WINDOWS_CLAUDE_CODE_GUIDE.md) も参照してください。
 
-**利用方法**: Claude Desktop を再起動すると、チャット内で `jev_browse` ツールが有効になります。
+**利用方法**: Claude Desktop を再起動すると、チャット内で `open_browse`（または `jev_browse`）ツールが有効になります。
 > 例: 「Google Flights（https://www.google.com/travel/flights?hl=en）でロンドンからチューリッヒへの9月20日の片道航空券を検索して」
 
 ---

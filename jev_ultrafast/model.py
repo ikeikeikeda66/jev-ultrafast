@@ -1,5 +1,6 @@
 """SemIf makes choices; an optional small OpenAI-compatible model writes field values."""
 
+import hashlib
 import json
 import math
 import os
@@ -10,6 +11,17 @@ import httpx
 from .questions import NEXT_ACTION, TARGET, TEXT_VALUE
 
 CLIENT = httpx.Client(http2=True, timeout=25)
+
+
+def compute_question_spec_hash(*specs: str) -> str:
+    """Compute a deterministic hash for given question and rule specifications."""
+    hasher = hashlib.sha256()
+    for s in specs:
+        hasher.update(s.encode("utf-8"))
+    return hasher.hexdigest()[:16]
+
+
+QUESTION_SPEC_HASH = compute_question_spec_hash(NEXT_ACTION, TARGET)
 
 
 def post_json(url, key, body):
@@ -127,20 +139,29 @@ def choose(state, goal, history):
     target = None
     target_answer = None
     probabilities = {}
+    is_single_bypass = False
+    target_decision_source = None
+    target_raw = None
 
     if operation in targets:
         candidates = targets[operation]
         candidate_keys = list(candidates.keys())
         if len(candidates) == 1:
             # Only one target available: deterministic, bypass model call
+            is_single_bypass = True
+            target_decision_source = "deterministic"
             target = candidate_keys[0]
             target_answer = {
                 "id": f"decide-target-{target}",
                 "choice": target,
                 "confidence": 1.0,
                 "probabilities": {target: 1.0},
+                "decision_source": "deterministic",
+                "backend": "deterministic",
+                "model": "deterministic",
             }
         elif len(candidates) <= 16:
+            target_decision_source = "model"
             target_options = [
                 {
                     "id": index,
@@ -174,9 +195,12 @@ def choose(state, goal, history):
             )
             target_raw = post_decide(target_state, target_question, target_options)
             target_answer = validate_choice(target_raw, set(candidate_keys))
+            target_answer["decision_source"] = "model"
+            target_answer["backend"] = "semif"
             target = target_answer["choice"]
         else:
             # Paged exploration for more than 16 candidates, capped at MAX_TARGET_PAGES to respect budget
+            target_decision_source = "model"
             MAX_TARGET_PAGES = 3
             offset = 0
             page_count = 0
@@ -229,6 +253,8 @@ def choose(state, goal, history):
                 expected_ids = {opt["id"] for opt in current_options}
                 target_raw = post_decide(target_state, target_question, current_options)
                 target_answer = validate_choice(target_raw, expected_ids)
+                target_answer["decision_source"] = "model"
+                target_answer["backend"] = "semif"
                 selected_choice = target_answer["choice"]
                 if selected_choice == "MORE_CANDIDATES" and has_more:
                     offset += 15
@@ -256,7 +282,54 @@ def choose(state, goal, history):
         raw_answers[operation.lower() + "_target"] = target_answer
 
     model_info = op_raw.get("model", "semif")
-    model_name = model_info.get("source", "semif") if isinstance(model_info, dict) else model_info
+    model_name = (
+        model_info.get("source") or model_info.get("name") or "semif"
+        if isinstance(model_info, dict)
+        else str(model_info)
+    )
+    model_version = (
+        model_info.get("version")
+        if isinstance(model_info, dict)
+        else op_raw.get("version")
+    )
+
+    decision_source = "deterministic" if is_single_bypass else "model"
+    op_spec_hash = compute_question_spec_hash(NEXT_ACTION)
+    target_spec_hash = compute_question_spec_hash(NEXT_ACTION, TARGET)
+
+    target_model_name = "deterministic" if is_single_bypass else model_name
+    if isinstance(target_raw, dict) and target_raw.get("model"):
+        raw_tm = target_raw["model"]
+        target_model_name = (
+            raw_tm.get("source") or raw_tm.get("name") or str(raw_tm)
+            if isinstance(raw_tm, dict)
+            else str(raw_tm)
+        )
+
+    provenance = {
+        "backend": "semif",
+        "model": model_name,
+        "model_version": model_version,
+        "question_spec_hash": QUESTION_SPEC_HASH,
+        "decision_source": decision_source,
+        "calibration_surface": "semif_local",
+        "stages": {
+            "operation": {
+                "backend": "semif",
+                "model": model_name,
+                "model_version": model_version,
+                "decision_source": "model",
+                "question_spec_hash": op_spec_hash,
+            },
+        },
+    }
+    if target:
+        provenance["stages"]["target"] = {
+            "backend": "deterministic" if is_single_bypass else "semif",
+            "model": target_model_name,
+            "decision_source": target_decision_source,
+            "question_spec_hash": None if is_single_bypass else target_spec_hash,
+        }
 
     return {
         "choice": choice,
@@ -268,7 +341,12 @@ def choose(state, goal, history):
         "target_probabilities": target_answer["probabilities"] if target_answer else {},
         "target_confidence": target_answer["confidence"] if target_answer else None,
         "raw_answers": raw_answers,
+        "backend": "semif",
         "model": model_name,
+        "model_version": model_version,
+        "question_spec_hash": QUESTION_SPEC_HASH,
+        "decision_source": decision_source,
+        "provenance": provenance,
         "usage": op_raw.get("usage", {}),
         "latency_ms": round((time.perf_counter() - started) * 1000),
         "request": {
