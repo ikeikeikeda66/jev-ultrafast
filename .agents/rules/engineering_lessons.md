@@ -25,5 +25,5 @@
 
 ## 6. Decision Provenance & Calibration Boundaries
 - **Explicit Provenance Boundaries**: SemIf and Jev must not be conflated merely because they share an action schema. Explicitly report actual `backend` (`semif`), `model`/version, `question_spec_hash`, and separate decision provenance from browser execution traces.
-- **Deterministic Bypass Tagging**: When bypassing model evaluation for a single candidate element, explicitly return `decision_source="deterministic"`. Use `decision_source="model"` for model evaluations.
+- **Deterministic Bypass Tagging**: Mark only the bypassed target stage with `decision_source="deterministic"`; retain `decision_source="model"` or an explicit mixed value for the combined decision when another stage used the model.
 - **Neutral Tool Names & Qualified Results**: Provide neutral tool names (`open_browse`, `open_decide`) and backend-qualified results (`backend: "semif"`, `calibration_surface: "semif_local"`) to prevent local and cloud traces from conflating distinct calibration surfaces.

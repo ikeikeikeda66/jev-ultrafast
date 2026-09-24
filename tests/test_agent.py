@@ -96,9 +96,11 @@ def test_semif_two_stage_decision_and_single_candidate_bypass(monkeypatch):
     # Provenance assertions
     assert d["backend"] == "semif"
     assert d["model"] == "semif-test"
-    assert d["decision_source"] == "deterministic"
+    # Combined decision uses model for operation and deterministic bypass for target -> mixed
+    assert d["decision_source"] == "mixed"
     assert isinstance(d["question_spec_hash"], str) and len(d["question_spec_hash"]) == 16
     assert d["provenance"]["stages"]["target"]["decision_source"] == "deterministic"
+    assert d["provenance"]["stages"]["target"]["model_version"] is None
     assert d["provenance"]["stages"]["operation"]["decision_source"] == "model"
 
 
@@ -112,6 +114,7 @@ def test_semif_two_stage_decision_calls_second_stage_for_multiple_targets(monkey
             # Operation decision
             return {
                 "model": "semif-test",
+                "version": "v1.0",
                 "decision": "CLICK",
                 "confidence": 0.95,
                 "probabilities": {opt: (0.95 if opt == "CLICK" else 0.05 / (len(options) - 1)) for opt in options},
@@ -119,7 +122,7 @@ def test_semif_two_stage_decision_calls_second_stage_for_multiple_targets(monkey
         else:
             # Target decision (options: ["1", "2"])
             return {
-                "model": "semif-test-target",
+                "model": {"name": "semif-test-target", "version": "v2.1"},
                 "decision": "2",
                 "confidence": 0.92,
                 "probabilities": {"1": 0.08, "2": 0.92},
@@ -134,6 +137,8 @@ def test_semif_two_stage_decision_calls_second_stage_for_multiple_targets(monkey
     assert d["decision_source"] == "model"
     assert d["provenance"]["stages"]["target"]["decision_source"] == "model"
     assert d["provenance"]["stages"]["target"]["model"] == "semif-test-target"
+    assert d["provenance"]["stages"]["target"]["model_version"] == "v2.1"
+    assert d["provenance"]["stages"]["operation"]["model_version"] == "v1.0"
 
 
 def test_click_rejects_invalid_target_decision(monkeypatch):
@@ -414,7 +419,8 @@ def test_mcp_neutral_tool_names_and_provenance(monkeypatch):
     content = json.loads(resp["result"]["content"][0]["text"])
     assert content["backend"] == "semif"
     assert content["model"] == "semif-local-test"
-    assert content["decision_source"] == "deterministic"
+    assert content["decision_source"] == "mixed"
+    assert content["provenance"]["stages"]["target"]["decision_source"] == "deterministic"
     assert "question_spec_hash" in content
     assert content["calibration_surface"] == "semif_local"
 
